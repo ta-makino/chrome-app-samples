@@ -174,3 +174,9 @@ onload = function() {
 
   };
 };
+
+chrome.app.runtime.onLaunched.addListener(function(intentData) {
+  onload().start_func();
+});
+
+
