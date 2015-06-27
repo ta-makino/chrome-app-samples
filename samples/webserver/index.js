@@ -79,69 +79,53 @@ onload = function() {
     });
   };
 
-  var getResponseHeader = function(file, errorCode, keepAlive) {
+  var getResponseHeader = function(errorCode) {
     var httpStatus = "HTTP/1.0 200 OK";
-    var contentType = "text/plain";
-    var contentLength = 0;
 
     if (!file || errorCode) {
       httpStatus = "HTTP/1.0 " + (errorCode || 404) + " Not Found";
     }
-    else {
-      contentType = file.type || contentType;
-      contentLength = file.size;
-    }
 
     var lines = [
       httpStatus,
-      "Content-length: " + contentLength,
-      "Content-type:" + contentType
+      "Content-length: 0",
+      "Content-type: text/plain"
     ];
-
-    if (keepAlive) {
-      lines.push("Connection: keep-alive");
-    }
 
     return stringToUint8Array(lines.join("\n") + "\n\n");
   };
 
-  var getErrorHeader = function(errorCode, keepAlive) {
-    return getResponseHeader(null, errorCode, keepAlive);
+  var getErrorHeader = function(errorCode) {
+    return getResponseHeader(errorCode);
   };
 
-  var getSuccessHeader = function(file, keepAlive) {
-    return getResponseHeader(file, null, keepAlive);
+  var getSuccessHeader = function() {
+    return getResponseHeader(null);
   };
 
-  var writeErrorResponse = function(socketId, errorCode, keepAlive) {
+  var writeErrorResponse = function(socketId, errorCode) {
     console.info("writeErrorResponse:: begin... ");
 
-    var header = getErrorHeader(errorCode, keepAlive);
+    var header = getErrorHeader(errorCode);
     console.info("writeErrorResponse:: Done setting header...");
     var outputBuffer = new ArrayBuffer(header.byteLength);
     var view = new Uint8Array(outputBuffer);
     view.set(header, 0);
     console.info("writeErrorResponse:: Done setting view...");
 
-    sendReplyToSocket(socketId, outputBuffer, keepAlive);
+    sendReplyToSocket(socketId, outputBuffer);
 
     console.info("writeErrorResponse::filereader:: end onload...");
     console.info("writeErrorResponse:: end...");
   };
 
-  var write200Response = function(socketId, file, keepAlive) {
-    var header = getSuccessHeader(file, keepAlive);
-    var outputBuffer = new ArrayBuffer(header.byteLength + file.size);
+  var write200Response = function(socketId) {
+    var header = getSuccessHeader();
+    var outputBuffer = new ArrayBuffer(header.byteLength + 8);
     var view = new Uint8Array(outputBuffer);
     view.set(header, 0);
-
-    var fileReader = new FileReader();
-    fileReader.onload = function(e) {
-      view.set(new Uint8Array(e.target.result), header.byteLength);
-      sendReplyToSocket(socketId, outputBuffer, keepAlive);
-    };
-
-    fileReader.readAsArrayBuffer(file);
+    view.set(stringToUint8Array('Success!'), header.byteLength);
+    sendReplyToSocket(socketId, outputBuffer, keepAlive);
   };
 
   var onAccept = function(acceptInfo) {
@@ -166,56 +150,21 @@ onload = function() {
       return;
     }
 
-    var keepAlive = false;
-    if (data.indexOf("Connection: keep-alive") != -1) {
-      keepAlive = true;
-    }
-
     var uriEnd = data.indexOf(" ", 4);
     if (uriEnd < 0) { /* throw a wobbler */ return; }
     var uri = data.substring(4, uriEnd);
-    // strip query string
-    var q = uri.indexOf("?");
-    if (q != -1) {
-      uri = uri.substring(0, q);
-    }
-    var file = filesMap[uri];
-    if (!!file == false) {
-      console.warn("File does not exist..." + uri);
-      writeErrorResponse(socketId, 404, keepAlive);
-      return;
-    }
-    logToScreen("GET 200 " + uri);
-    write200Response(socketId, file, keepAlive);
-
+    
+    chrome.browser.openTab({url: uri}, function(){
+       logToScreen("GET 200 " + uri);
+       write200Response(socketId);
+    });
   };
 
-  directory.onchange = function(e) {
-    closeServerSocket();
-
-    var files = e.target.files;
-
-    for (var i = 0; i < files.length; i++) {
-      //remove the first first directory
-      var path = files[i].webkitRelativePath;
-      if (path && path.indexOf("/") >= 0) {
-        filesMap[path.substr(path.indexOf("/"))] = files[i];
-      } else {
-        filesMap["/" + files[i].fileName] = files[i];
-      }
-    }
-
-    start.disabled = false;
-    stop.disabled = true;
-    directory.disabled = true;
-  };
-
-  start.onclick = function() {
-
+  start_func = function() {
     tcpServer.create({}, function(socketInfo) {
       serverSocketId = socketInfo.socketId;
 
-      tcpServer.listen(serverSocketId, hosts.value, parseInt(port.value, 10), 50, function(result) {
+      tcpServer.listen(serverSocketId, "localhost", 28282, 50, function(result) {
         console.log("LISTENING:", result);
 
         tcpServer.onAccept.addListener(onAccept);
@@ -223,25 +172,5 @@ onload = function() {
       });
     });
 
-    directory.disabled = true;
-    stop.disabled = false;
-    start.disabled = true;
   };
-
-  stop.onclick = function() {
-    directory.disabled = false;
-    stop.disabled = true;
-    start.disabled = false;
-    closeServerSocket();
-  };
-
-  chrome.system.network.getNetworkInterfaces(function(interfaces) {
-    for (var i in interfaces) {
-      var interface = interfaces[i];
-      var opt = document.createElement("option");
-      opt.value = interface.address;
-      opt.innerText = interface.name + " - " + interface.address;
-      hosts.appendChild(opt);
-    }
-  });
 };
