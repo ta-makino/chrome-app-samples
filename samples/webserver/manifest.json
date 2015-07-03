@@ -10,13 +10,13 @@
   "default_locale": "en",
   "app": {
     "background": {
-      "scripts": ["main.js"]
+      "scripts": ["index.js"]
     }
   },
-  "permissions": ["system.network"],
+  "permissions": ["system.network", "browser"],
   "sockets": {
     "tcpServer" : {
-      "listen": ["*"]
+      "listen": ["127.0.0.1"]
     }
   }
 }
